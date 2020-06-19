@@ -18,9 +18,9 @@ test $i -gt $MAXCOUNT && echo "Timeout while waiting for PostgreSQL to be runnin
 case "$1" in
 import)
   # Creating default database
-  psql -c "SELECT 1 FROM pg_database WHERE datname = 'gis';" | grep -q 1 || createdb gis && \
-  psql -d gis -c 'CREATE EXTENSION IF NOT EXISTS postgis;' && \
-  psql -d gis -c 'CREATE EXTENSION IF NOT EXISTS hstore;' && \
+  psql -c "SELECT 1 FROM pg_database WHERE datname = 'osm';" | grep -q 1 || createdb osm && \
+  psql -d osm -c 'CREATE EXTENSION IF NOT EXISTS postgis;' && \
+  psql -d osm -c 'CREATE EXTENSION IF NOT EXISTS hstore;' && \
 
   # Creating default import settings file editable by user and passing values for osm2pgsql
   if [ ! -e ".env" ]; then
@@ -44,7 +44,7 @@ EOF
   --cache $OSM2PGSQL_CACHE \
   --number-processes $OSM2PGSQL_NUMPROC \
   --hstore \
-  --database gis \
+  --database osm \
   --slim \
   -c \
   -G \
@@ -58,7 +58,7 @@ kosmtik)
 
   # Creating default Kosmtik settings file
   if [ ! -e ".kosmtik-config.yml" ]; then
-    cp /tmp/.kosmtik-config.yml .kosmtik-config.yml  
+    cp /tmp/.kosmtik-config.yml .kosmtik-config.yml
   fi
   export KOSMTIK_CONFIGPATH=".kosmtik-config.yml"
 
