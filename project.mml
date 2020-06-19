@@ -402,45 +402,6 @@ Layer:
   geometry: polygon
   properties:
     minzoom: 13
-- id: piers-poly
-  geometry: polygon
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (SELECT
-          way, man_made
-        FROM planet_osm_polygon
-        WHERE man_made IN ('pier', 'breakwater', 'groyne')
-      ) AS piers_poly
-  properties:
-    minzoom: 12
-- id: piers-line
-  geometry: linestring
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (SELECT
-          way, man_made
-        FROM planet_osm_line
-        WHERE man_made IN ('pier', 'breakwater', 'groyne')
-      ) AS piers_line
-  properties:
-    minzoom: 12
-- id: aeroway
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT way, aeroway AS type
-        FROM planet_osm_line
-        WHERE aeroway IN ('runway', 'taxiway')
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 11
 - id: tunnel
   <<: *extents
   Datasource:
@@ -1035,105 +996,6 @@ Layer:
       ) AS admin_high_zoom
   properties:
     minzoom: 13
-- id: bicycle_routes_gen0
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT ST_Simplify(way, !pixel_width!/4, TRUE) AS way, route, tags->'network' AS type, tags->'state' AS state
-        FROM planet_osm_line
-        WHERE (route='bicycle' OR route='mtb')
-          AND tags->'network'='icn'
-          AND way && !bbox!
-        ORDER BY z_order
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 2
-    maxzoom: 4
-- id: bicycle_routes_gen1
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT ST_Simplify(way, !pixel_width!/4, TRUE) AS way, route, tags->'network' AS type, tags->'state' AS state
-        FROM planet_osm_line
-        WHERE (route='bicycle' OR route='mtb')
-          AND tags->'network' IN ('icn', 'ncn')
-          AND way && !bbox!
-        ORDER BY CASE
-          WHEN tags->'network' = 'icn' THEN 0
-          WHEN tags->'network' = 'ncn' THEN 1
-        END DESC
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 5
-    maxzoom: 7
-- id: bicycle_routes_gen2
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT ST_Simplify(way, !pixel_width!/4, TRUE) AS way, route, tags->'network' AS type, tags->'state' AS state
-        FROM planet_osm_line
-        WHERE (route='bicycle' OR route='mtb')
-          AND tags->'network' IN ('icn', 'ncn', 'rcn')
-          AND (NOT ((tags->'network') IS NOT NULL AND (tags->'network:type') IS NOT NULL AND (tags->'network' = 'rcn') AND tags->'network:type' = 'node_network'))
-          AND way && !bbox!
-        ORDER BY CASE
-          WHEN tags->'network' = 'icn' THEN 0
-          WHEN tags->'network' = 'ncn' THEN 1
-          WHEN tags->'network' = 'rcn' THEN 2
-        END DESC
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 8
-    maxzoom: 10
-- id: bicycle_routes_bicycle_gen3
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT way, route, COALESCE(tags->'network', 'lcn') AS type, tags->'state' AS state
-        FROM planet_osm_line
-        WHERE route='bicycle'
-        ORDER BY CASE
-          WHEN tags->'network' = 'icn' THEN 0
-          WHEN tags->'network' = 'ncn' THEN 1
-          WHEN tags->'network' = 'rcn' THEN 2
-          WHEN tags->'network' = 'lcn' THEN 3
-          ELSE 4
-        END DESC
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 11
-- id: bicycle_routes_mtb_gen3
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT way, route, COALESCE(tags->'network', 'lcn') AS type, tags->'state' AS state
-        FROM planet_osm_line
-        WHERE route='mtb'
-        ORDER BY CASE
-          WHEN tags->'network' = 'icn' THEN 0
-          WHEN tags->'network' = 'ncn' THEN 1
-          WHEN tags->'network' = 'rcn' THEN 2
-          WHEN tags->'network' = 'lcn' THEN 3
-          ELSE 4
-        END DESC
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 11
 - id: ferry-routes
   geometry: linestring
   <<: *extents
@@ -1157,33 +1019,6 @@ Layer:
   geometry: line
   properties:
     status: off
-- id: power-minorline
-  geometry: linestring
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (SELECT
-          way
-        FROM planet_osm_line
-        WHERE power = 'minor_line'
-      ) AS power_minorline
-  properties:
-    minzoom: 16
-- id: power-line
-  geometry: linestring
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (SELECT
-          way
-        FROM planet_osm_line
-        WHERE power = 'line'
-          OR (power = 'cable' AND tags->'location' IN ('overground', 'overhead', 'surface', 'outdoor', 'platform'))
-      ) AS power_line
-  properties:
-    minzoom: 14
 - id: protected-areas
   geometry: polygon
   <<: *extents
@@ -1517,21 +1352,6 @@ Layer:
       ) AS protected_areas_text
   properties:
     minzoom: 13
-- id: bicycle_routes_labels
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT way, route, tags->'network' AS type, ref, 1 as height, char_length(ref) AS width
-        FROM planet_osm_line
-        WHERE (route = 'bicycle' OR route = 'mtb')
-          AND ref IS NOT NULL
-          AND (NOT ((tags->'network') IS NOT NULL AND (tags->'network:type') IS NOT NULL AND (tags->'network' = 'rcn') AND tags->'network:type' = 'node_network'))
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 8
 - id: train_stations
   <<: *extents
   Datasource:
@@ -2247,26 +2067,6 @@ Layer:
         ) AS p
       ) AS data
   geometry: point
-  properties:
-    minzoom: 14
-- id: power-towers
-  geometry: point
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (SELECT
-          way,
-          power
-      FROM planet_osm_point
-      WHERE power IN ('tower', 'pole')
-      ORDER BY
-        CASE
-          WHEN power = 'tower' THEN 1
-          WHEN power = 'pole' THEN 2
-          ELSE NULL
-        END
-      ) AS power_towers
   properties:
     minzoom: 14
 - id: highway_area_label
