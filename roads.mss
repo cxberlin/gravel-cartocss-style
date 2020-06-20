@@ -2,65 +2,6 @@
 //                    ROAD & RAIL LINES
 // ==================================================================
 
-// At lower zoomlevels, just show major automobile routes: motorways
-// and trunks.
-
-#roads_low[zoom>=5][zoom<=8] {
-  line-color: @motorway-trunk-fill;
-
-  [type='motorway'][bicycle='yes'],
-  [type='trunk'][bicycle!='no']{
-    line-color: @motorway-trunk-cycle-fill;
-  }
-
-  [type='railway'] {
-    line-color: @rail-line;
-  }
-
-  line-width: 0.3;
-  [zoom >= 6] {
-    line-width: 0.4;
-  }
-  [zoom >= 7] {
-    line-width: 0.6;
-  }
-  [zoom >= 8] {
-    line-width: 0.8;
-  }
-}
-
-// At mid-level scales start to show primary and secondary routes
-// as well.
-
-#roads_med[zoom >= 9] {
-  line-color: @motorway-trunk-fill;
-
-  [type='motorway'][can_bicycle='yes'],
-  [type='trunk'][can_bicycle!='no'] {
-    line-color: @motorway-trunk-cycle-fill;
-  }
-  [type='primary'] {
-    line-color: @primary-case;
-  }
-  [type='secondary'] {
-    line-color: @standard-case;
-  }
-
-  [type='railway'] {
-    line-color: @rail-line;
-  }
-
-  line-width: 1;
-  [type='secondary']
-  {
-    line-width: 0.6;
-
-    [zoom >= 10] {
-      line-width: 1;
-    }
-  }
-}
-
 // At higher levels the roads become more complex. We're now showing
 //more than just automobile routes - railways, footways, and cycleways
 //come in as well.

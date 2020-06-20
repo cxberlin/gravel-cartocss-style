@@ -15,7 +15,7 @@
 @cycle_track_case:  @cycle-fill;
 @cycle_busway_case: @cycle-fill;
 @mixed-cycle-fill: #0060ff;
-@path-fill: #007360;
+@path-fill: #ff0000;
 @footway-fill: #7a5b36;
 @footway-tunnel-fill: #dcc3a6;
 @bridleway-fill: #741e18;
@@ -44,11 +44,11 @@
 @pedestrian-case: #bbb;
 @pedestrian-fill: @speedWalk-fill;
 @pedestrian_area_fill:   #dce3e0;
-@speed32-fill: #aff1f1;
-@speed20-fill: #bbffba;
-@speedWalk-fill: #ddffba;
+@speed32-fill: #BB0011;
+@speed20-fill: #BB0011;
+@speedWalk-fill: #BB0011;
 @nomotor-fill: #62ff96;
-@track-fill: #1b3b66;
+@track-fill: #ff00ff;
 @track-light1: lighten(@track-fill, 30%);
 @track-light2: lighten(@track-fill, 50);
 
