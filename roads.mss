@@ -37,7 +37,7 @@
 @rdz11_living_street: 0;
 @rdz11_service: 0;
 @rdz11_pedestrian: 0;
-@rdz11_track: 0.25;
+@rdz11_track: 0.75;
 @rdz11_path: 0.30;
 @rdz11_cycle: 0.5;
 @rdz11_railway: 0.5;
@@ -71,7 +71,7 @@
 @rdz12_residential: 0.5;
 @rdz12_living_street: 0.5;
 @rdz12_service: 0;
-@rdz12_track: 0.5;
+@rdz12_track: 2;
 @rdz12_pedestrian: 0.5;
 @rdz12_path: 0.5;
 @rdz12_cycle: 0.8;
@@ -106,7 +106,7 @@
 @rdz13_residential: 1;
 @rdz13_living_street: 0.6;
 @rdz13_service: 1;
-@rdz13_track: 1;
+@rdz13_track: 3;
 @rdz13_pedestrian: 0.6;
 @rdz13_bridleway: 0.20;
 @rdz13_path: 0.65;
@@ -145,7 +145,7 @@
 @rdz14_residential: 1;
 @rdz14_living_street: 1;
 @rdz14_service: 1;
-@rdz14_track: 1;
+@rdz14_track: 2.5;
 @rdz14_pedestrian: 1;
 @rdz14_bridleway: 0.25;
 @rdz14_path: 1;
@@ -186,7 +186,7 @@
 @rdz15_residential: 2;
 @rdz15_living_street: 1.5;
 @rdz15_service: 2;
-@rdz15_track: 2;
+@rdz15_track: 3;
 @rdz15_pedestrian: 1;
 @rdz15_bridleway: 0.5;
 @rdz15_path: 1.25;
