@@ -44,11 +44,11 @@
 @pedestrian-case: #bbb;
 @pedestrian-fill: @speedWalk-fill;
 @pedestrian_area_fill:   #dce3e0;
-@speed32-fill: #BB0011;
-@speed20-fill: #BB0011;
-@speedWalk-fill: #BB0011;
+@speed32-fill: #ff6600;
+@speed20-fill: #ff6600;
+@speedWalk-fill: #ff6600;
 @nomotor-fill: #62ff96;
-@track-fill: #ff00ff;
+@track-fill: #bb2233;
 @track-light1: lighten(@track-fill, 30%);
 @track-light2: lighten(@track-fill, 50);
 

@@ -38,7 +38,7 @@
 @rdz11_service: 0;
 @rdz11_pedestrian: 0;
 @rdz11_track: 0.75;
-@rdz11_path: 0.30;
+@rdz11_path: 0.50;
 @rdz11_cycle: 0.5;
 @rdz11_railway: 0.5;
 // Border width (one side of the road only)
@@ -73,7 +73,7 @@
 @rdz12_service: 0;
 @rdz12_track: 2;
 @rdz12_pedestrian: 0.5;
-@rdz12_path: 0.5;
+@rdz12_path: 1.5;
 @rdz12_cycle: 0.8;
 @rdz12_railway: 0.5;
 // Border width (one side of the road only)
@@ -109,7 +109,7 @@
 @rdz13_track: 3;
 @rdz13_pedestrian: 0.6;
 @rdz13_bridleway: 0.20;
-@rdz13_path: 0.65;
+@rdz13_path: 2;
 @rdz13_footway: 0.20;
 @rdz13_steps: 0.3;
 @rdz13_cycle: 1;
@@ -148,7 +148,7 @@
 @rdz14_track: 2.5;
 @rdz14_pedestrian: 1;
 @rdz14_bridleway: 0.25;
-@rdz14_path: 1;
+@rdz14_path: 2;
 @rdz14_footway: 0.25;
 @rdz14_steps: 0.5;
 @rdz14_cycle: 2;
@@ -189,7 +189,7 @@
 @rdz15_track: 3;
 @rdz15_pedestrian: 1;
 @rdz15_bridleway: 0.5;
-@rdz15_path: 1.25;
+@rdz15_path: 2.5;
 @rdz15_footway: 0.5;
 @rdz15_steps: 0.8;
 @rdz15_cycle: 2;
