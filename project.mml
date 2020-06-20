@@ -348,80 +348,14 @@ Layer:
           AND (bridge IS NULL OR bridge = 'no')
           AND (covered IS NULL OR covered = 'no')
           AND (tags->'indoor' IS NULL OR tags->'indoor' = 'no')
+          -- Tim's condition
+          AND ((surface IN ('finegravel', 'gravel', 'pebblestone', 'compacted', 'dirt', 'unpaved', 'concrete:lanes')) OR (tracktype in ('grade2')))
         ORDER BY z_order
       ) AS data
   geometry: linestring
   properties:
     cache-features: true
     minzoom: 11
-- id: roads_med
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT
-          ST_Snaptogrid(way, !pixel_width! / 4) AS way,
-          COALESCE(
-            highway,
-            CASE
-              WHEN railway IN ('rail') THEN 'railway'
-              ELSE 'other'
-            END
-          ) AS type,
-          CASE
-            WHEN bicycle IN ('no', 'private') THEN 'no'
-            WHEN bicycle IS NOT NULL THEN bicycle
-            WHEN tags->'motorroad' IN ('yes') THEN 'no'
-            WHEN highway NOT IN ('motorway', 'motorway_link') AND tags->'vehicle' IN ('no', 'private') THEN 'no'
-            WHEN highway NOT IN ('motorway', 'motorway_link') AND tags->'vehicle' IS NOT NULL THEN tags->'vehicle'
-            WHEN highway NOT IN ('motorway', 'motorway_link') AND access IN ('no', 'private') THEN 'no'
-            WHEN highway NOT IN ('motorway', 'motorway_link') AND access IS NOT NULL THEN access
-            ELSE NULL
-          END AS can_bicycle
-        FROM planet_osm_roads
-        WHERE (railway IN ('rail')
-            OR highway IN ('motorway', 'trunk', 'primary', 'secondary'))
-          AND way && !bbox!
-        ORDER BY CASE
-          WHEN railway IS NOT NULL THEN 0
-          WHEN highway IS NOT NULL THEN 1
-        END DESC
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 9
-    maxzoom: 10
-- id: roads_low
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-          SELECT
-            ST_Snaptogrid(way, !pixel_width! / 4) AS way,
-            COALESCE(
-              highway,
-              CASE
-                WHEN railway IN ('rail') THEN 'railway'
-                ELSE 'other'
-              END
-            ) AS type,
-            bridge,
-            tunnel,
-            bicycle
-          FROM planet_osm_roads
-          WHERE (railway IN ('rail') OR highway IN ('motorway', 'trunk'))
-            AND way && !bbox!
-          ORDER BY CASE
-            WHEN railway IS NOT NULL THEN 0
-            WHEN highway IS NOT NULL THEN 1
-          END DESC
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 5
-    maxzoom: 8
 - id: turning_circle_fill
   <<: *extents
   Datasource:
@@ -456,143 +390,6 @@ Layer:
       ) AS data
   properties:
     minzoom: 12
-- id: bridge
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT
-          way,
-          COALESCE(
-            CASE
-              WHEN highway='raceway' THEN 'track'  -- render raceways as tracks
-              WHEN highway='road' THEN 'residential'  -- render "road" as residential
-              WHEN highway='footway' AND (bicycle='yes' OR bicycle='designated') THEN 'path'
-              WHEN highway='bridleway' AND (bicycle='yes' OR bicycle='designated') THEN 'path'
-              WHEN highway!='bus_guideway' THEN highway
-              ELSE NULL
-            END,
-            CASE
-              WHEN railway IN ('light_rail', 'subway', 'narrow_gauge', 'rail', 'tram') THEN 'railway'
-              ELSE NULL
-            END
-          ) AS type,
-          access,
-          layer,
-          CASE
-            WHEN tags->'maxspeed'~E'^\\d+$' THEN (tags->'maxspeed')::integer
-            WHEN tags->'maxspeed'~E'^\\d+ mph$' THEN REPLACE(tags->'maxspeed', ' mph', '')::integer * 1.609344
-            WHEN tags->'maxspeed'~E'^\\d+ knots$' THEN REPLACE(tags->'maxspeed', ' knots', '')::integer * 1.852
-            WHEN tags->'maxspeed'='walk' THEN 5
-            ELSE NULL
-          END AS maxspeed_kmh,
-          CASE
-            WHEN (
-              tags->'psv' != 'no' OR tags->'motorcar' != 'no' OR tags->'bus' != 'no'
-              OR tags->'motor_vehicle' != 'no'
-              OR tags->'vehicle' != 'no'
-              ) THEN 'yes'
-            WHEN tags->'psv' IS NULL AND tags->'motorcar' IS NULL AND tags->'bus' IS NULL AND tags->'motor_vehicle' IS NULL AND tags->'vehicle' IS NULL AND (access != 'no' OR access IS NULL) THEN 'yes'
-            ELSE 'no'
-          END AS motor_vehicle,
-          CASE
-            WHEN tags->'cyclestreet' IN ('yes') THEN 'yes'
-            WHEN tags->'bicycle_road' IN ('yes') THEN 'yes'
-            ELSE 'no'
-          END AS cyclestreet,
-          CASE
-            WHEN oneway IN ('yes', '-1') THEN oneway
-            ELSE 'no'
-          END AS oneway,
-          CASE
-            WHEN tags->'cycleway:left' IN ('track', 'opposite_track') THEN 'track'
-            WHEN tags->'cycleway:left' IN ('lane', 'opposite_lane') THEN 'lane'
-            WHEN tags->'cycleway:left' IN ('share_busway', 'opposite_share_busway', 'shoulder', 'shared_lane') THEN 'busway'
-            WHEN tags->'cycleway:both' IN ('track', 'opposite_track') THEN 'track'
-            WHEN tags->'cycleway:both' IN ('lane', 'opposite_lane') THEN 'lane'
-            WHEN tags->'cycleway:both' IN ('share_busway', 'opposite_share_busway', 'shoulder', 'shared_lane') THEN 'busway'
-            WHEN tags->'cycleway' IN ('track', 'opposite_track') THEN 'track'
-            WHEN tags->'cycleway' IN ('lane', 'opposite_lane') THEN 'lane'
-            WHEN tags->'cycleway' IN ('share_busway', 'opposite_share_busway', 'shoulder', 'shared_lane') THEN 'busway'
-            ELSE NULL
-          END AS cycleway_left_render,
-          CASE
-            WHEN tags->'cycleway:right' IN ('track', 'opposite_track') THEN 'track'
-            WHEN tags->'cycleway:right' IN ('lane', 'opposite_lane') THEN 'lane'
-            WHEN tags->'cycleway:right' IN ('share_busway', 'opposite_share_busway', 'shoulder', 'shared_lane') THEN 'busway'
-            WHEN tags->'cycleway:both' IN ('track', 'opposite_track') THEN 'track'
-            WHEN tags->'cycleway:both' IN ('lane', 'opposite_lane') THEN 'lane'
-            WHEN tags->'cycleway:both' IN ('share_busway', 'opposite_share_busway', 'shoulder', 'shared_lane') THEN 'busway'
-            WHEN tags->'cycleway' IN ('track', 'opposite_track') THEN 'track'
-            WHEN tags->'cycleway' IN ('lane', 'opposite_lane') THEN 'lane'
-            WHEN tags->'cycleway' IN ('share_busway', 'opposite_share_busway', 'shoulder', 'shared_lane') THEN 'busway'
-            ELSE NULL
-          END AS cycleway_right_render,
-          CASE
-            WHEN tags->'cycleway:left:oneway' IS NOT NULL THEN tags->'cycleway:left:oneway'
-            WHEN tags->'cycleway:left' IN ('opposite_lane', 'opposite_track', 'opposite_share_busway') THEN '-1'
-            WHEN tags->'cycleway' IN ('opposite_lane', 'opposite_track', 'opposite_share_busway') THEN '-1'
-            ELSE NULL
-          END AS cycleway_left_oneway,
-          CASE
-            WHEN tags->'cycleway:right:oneway' IS NOT NULL THEN tags->'cycleway:right:oneway'
-            WHEN tags->'cycleway:right' IN ('opposite_lane', 'opposite_track', 'opposite_share_busway') THEN '-1'
-            WHEN tags->'cycleway' IN ('opposite_lane', 'opposite_track', 'opposite_share_busway') THEN '-1'
-            ELSE NULL
-          END AS cycleway_right_oneway,
-          CASE
-            WHEN bicycle IN ('no', 'private') THEN 'no'
-            WHEN bicycle IS NOT NULL THEN bicycle
-            WHEN tags->'motorroad' IN ('yes') THEN 'no'
-            WHEN highway NOT IN ('motorway', 'motorway_link') AND tags->'vehicle' IN ('no', 'private') THEN 'no'
-            WHEN highway NOT IN ('motorway', 'motorway_link') AND tags->'vehicle' IS NOT NULL THEN tags->'vehicle'
-            WHEN highway NOT IN ('motorway', 'motorway_link') AND access IN ('no', 'private') THEN 'no'
-            WHEN highway NOT IN ('motorway', 'motorway_link') AND access IS NOT NULL THEN access
-            ELSE NULL
-          END AS can_bicycle,
-          CASE
-            WHEN tags->'segregated' IN ('yes') THEN 'yes'
-            ELSE 'no'
-          END AS segregated,
-          CASE
-            WHEN tags->'oneway:bicycle' IN ('yes', '-1') THEN tags->'oneway:bicycle'
-            ELSE 'no'
-          END AS oneway_bicycle,
-          COALESCE(
-            tags->'ramp:bicycle',
-            tags->'ramp:stroller',
-            tags->'ramp:wheelchair',
-            tags->'ramp:luggage'
-          ) AS has_ramp,
-          CASE
-            -- From best tag to less precise quality surface tag (smoothness > track > surface).
-            WHEN tags->'smoothness' IN ('horrible', 'very_horrible', 'impassable')
-              THEN 'mtb'
-            WHEN tags->'smoothness' IN ('bad', 'very_bad')
-              THEN 'cyclocross'
-            WHEN tracktype IN ('grade4', 'grade5')
-              THEN 'mtb'
-            WHEN tracktype IN ('grade2', 'grade3')
-              THEN 'cyclocross'
-            WHEN surface IN ('bad', 'pebblestone', 'dirt', 'earth', 'grass', 'grass_paver', 'gravel_turf', 'ground', 'mud', 'sand')
-              THEN 'mtb'
-            WHEN surface IN ('concrete:lanes', 'concrete:plates', 'gravel', 'sett', 'unhewn_cobblestone', 'cobblestone', 'wood', 'compacted', 'fine_gravel', 'woodchips')
-              THEN 'cyclocross'
-            ELSE NULL
-          END AS surface_type,
-          CASE
-            WHEN highway='cycleway' OR (highway IN ('path', 'footway', 'pedestrian', 'bridleway') AND bicycle IN ('yes', 'designated')) THEN CASE WHEN layer~E'^\\d+$' THEN 100*layer::integer+139 ELSE 139 END
-            WHEN highway IN ('path', 'footway', 'pedestrian', 'bridleway') THEN CASE WHEN layer~E'^\\d+$' THEN 100*layer::integer+138 ELSE 138 END
-            ELSE z_order
-          END AS z_order
-        FROM planet_osm_line
-        WHERE bridge NOT IN ('no') AND (railway IN ('light_rail', 'subway', 'narrow_gauge', 'rail', 'tram') OR highway IS NOT NULL)
-        ORDER BY z_order ASC
-      ) AS data
-  geometry: linestring
-  properties:
-    minzoom: 11
 - id: barriers_line
   geometry: linestring
   <<: *extents
@@ -657,357 +454,357 @@ Layer:
   geometry: point
   properties:
     minzoom: 13
-- id: train_stations
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT way, railway AS type, name, tags->'station' AS station, z_order
-        FROM planet_osm_point
-        WHERE railway = 'station' OR railway = 'halt'
-        ORDER BY z_order NULLS LAST
-      ) AS data
-  geometry: point
-  properties:
-    minzoom: 12
-- id: oriented-highway-amenities
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT
-          osm_id,
-          feature,
-          ST_GeometryN(st_union(way),1) as way, max(angle)-min(angle) as angle_diff,
-          avg(angle) as angle
-        FROM (
-          SELECT
-            p.osm_id,
-            p.way AS way,
-            p.feature AS feature,
-            CASE
-              WHEN p.feature = 'crossing' THEN cast(90+degrees(ST_Azimuth(st_lineinterpolatepoint(way1,0),st_lineinterpolatepoint(way1,1))) AS integer) % 180
-              WHEN p.feature = 'traffic_calming' THEN cast(90+degrees(ST_Azimuth(st_lineinterpolatepoint(way1,0),st_lineinterpolatepoint(way1,1))) AS integer) % 180
-              WHEN p.feature = 'cycleway_asl' THEN
-                CASE
-                  WHEN p.direction = 'backward' THEN cast(degrees(ST_Azimuth(st_lineinterpolatepoint(way1,0),st_lineinterpolatepoint(way1,1))) AS integer) + 180
-                  ELSE cast(degrees(ST_Azimuth(st_lineinterpolatepoint(way1,0),st_lineinterpolatepoint(way1,1))) AS integer)
-                END
-            END AS angle
-          FROM (
-            SELECT * FROM (
-              SELECT
-                p.osm_id,
-                p.way,
-                ST_LineMerge(ST_Intersection(st_buffer(p.way,0.1), h.way)) as way1,
-                CASE
-                  WHEN p.tags->'traffic_calming' IN ('yes', 'bump', 'dip', 'choker', 'cushion', 'hump', 'rumble_strip', 'table') THEN 'traffic_calming'
-                  WHEN p.tags->'cycleway' = 'asl' THEN 'cycleway_asl'
-                  WHEN p.highway = 'crossing' OR p.tags ? 'crossing' THEN 'crossing'
-                END AS feature,
-                p.tags->'direction' AS direction
-              FROM planet_osm_point as p
-              JOIN planet_osm_line h
-                ON (st_intersects(p.way,h.way) and h.highway is not null and h.highway not in ('footway','cycleway','path','pedestrian','steps','service'))
-              WHERE
-                (
-                  (
-                    (p.highway='crossing' OR p.tags ? 'crossing')
-                    AND p.bicycle IN ('yes', 'designated')
-                  )
-                  OR p.tags->'traffic_calming' IN ('yes', 'bump', 'dip', 'choker', 'cushion', 'hump', 'rumble_strip', 'table')
-                  OR p.tags->'cycleway' = 'asl'
-                )
-                AND p.way && !bbox!
-                AND h.way && !bbox!
-            ) AS p
-            WHERE ST_GeometryType(way1)='ST_LineString'
-          ) AS p
-        ) AS amenity
-        GROUP BY osm_id, feature
-      ) AS data
-  properties:
-    minzoom: 18
-- id: amenities-poly
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    # Update the layer with the text below as well when editing this query.
-    table: |-
-      (
-        SELECT
-          access,
-          bicycle,
-          tags->'mtb' AS mtb,
-          covered,
-          tags->'shelter' AS shelter,
-          way,
-          name,
-          COALESCE( -- order is important here
-            'aeroway_' || CASE WHEN aeroway IN ('helipad', 'aerodrome') THEN aeroway ELSE NULL END,
-            'tourism_' || CASE WHEN tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel', 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery') THEN tourism ELSE NULL END,
-            'amenity_' || CASE WHEN amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station', 'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food', 'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe', 'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath', 'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre', 'bureau_de_change', 'casino', 'library', 'motorcycle_parking', 'charging_station', 'vending_machine') THEN amenity ELSE NULL END,
-            'shop_' || CASE WHEN tags->'service:bicycle:retail'='yes' OR tags->'service:bicycle:repair'='yes' OR tags->'service:bicycle:rental'='yes' OR tags->'service:bicycle:pump'='yes' OR tags->'service:bicycle:diy'='yes' THEN 'bicycle' ELSE CASE WHEN shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports') THEN bicycle ELSE NULL END END,
-            'emergency_' || CASE WHEN tags->'emergency' IS NOT NULL then tags->'emergency' ELSE NULL END,
-            'healthcare_' || CASE WHEN tags->'healthcare' IN ('clinic', 'hospital') THEN tags->'healthcare' ELSE NULL END,
-            'leisure_' || CASE WHEN leisure='picnic_table' THEN leisure ELSE NULL END,
-            'man_made_' || CASE WHEN man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo', 'water_tap', 'monitoring_station') THEN man_made ELSE NULL END,
-            'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance') THEN "natural" ELSE NULL END,
-            'waterway_' || CASE WHEN waterway IN ('waterfall') THEN waterway ELSE NULL END,
-            'historic_' || CASE WHEN historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate') THEN historic ELSE NULL END,
-            'military_'|| CASE WHEN military IN ('bunker') THEN military ELSE NULL END,
-            'highway_'|| CASE WHEN highway IN ('bus_stop', 'elevator', 'traffic_signals') THEN highway ELSE NULL END,
-            'power_' || power
-          ) AS feature,
-          CASE
-            WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
-            ELSE NULL
-          END AS capacity,
-          religion,
-          tags->'denomination' AS denomination,
-          tags->'compressed_air' AS compressed_air,
-          tags->'car_wash' as car_wash,
-          tags->'drinking_water' AS drinking_water,
-          tags->'location' AS location,
-          tags->'memorial' AS memorial,
-          tags->'castle_type' AS castle_type,
-          tags->'information' AS information,
-          tags->'artwork_type' as artwork_type,
-          tags->'icao' as icao,
-          tags->'iata' as iata,
-          "generator:source",
-          tags->'supervised' as supervised,
-          tags->'bicycle_parking' as bicycle_parking,
-          tags->'vending' as vending,
-          tags->'automated' as automated,
-          CASE
-            WHEN "natural" IN ('peak', 'volcano', 'saddle') THEN NULL
-            WHEN "waterway" IN ('waterfall') THEN
-              CASE
-                WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
-              ELSE NULL
-              END
-            WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
-            ELSE NULL
-          END AS score,
-          NULL AS elevation,
-          CASE
-            WHEN (man_made IN ('mast', 'tower', 'chimney', 'crane') AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)) OR waterway IN ('waterfall') THEN
-              CASE
-                WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
-              ELSE NULL
-            END
-            ELSE NULL
-          END AS height,
-          way_area/NULLIF(!pixel_width!::real*!pixel_height!::real,0) AS way_pixels
-        FROM planet_osm_polygon
-        WHERE aeroway IN ('helipad', 'aerodrome')
-          OR tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel',
-              'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery')
-          OR amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station',
-                         'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food',
-                         'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe',
-                         'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath',
-                         'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre',
-                         'bureau_de_change', 'casino', 'library')
-          OR tags->'compressed_air'='yes'
-          OR tags->'car_wash'='yes'
-          OR (amenity='motorcycle_parking' AND (bicycle='yes' OR bicycle='designated'))
-          OR (amenity='charging_station' AND (bicycle='yes' OR bicycle='designated'))
-          OR (amenity='vending_machine' AND tags->'vending'='bicycle_tube')
-          OR tags->'healthcare' IN ('clinic', 'hospital')
-          OR shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports')
-          OR leisure='picnic_table'
-          OR (
-            man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo')
-            AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)
-          )
-          OR man_made IN ('water_tap')
-          OR man_made IN ('monitoring_station') AND tags->'monitoring:bicycle'='yes'
-          OR "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance')
-          OR waterway IN ('waterfall')
-          OR historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate')
-          OR military IN ('bunker')
-          OR tags->'emergency'='phone'
-          OR highway IN ('elevator', 'traffic_signals')
-          OR (highway='bus_stop' AND (tags->'shelter'='yes' OR covered='yes'))
-          OR (power = 'generator' AND "generator:source"='wind')
-        ORDER BY
-            CASE
-                -- Emergency first
-                WHEN tags->'healthcare' IS NOT NULL OR tags->'emergency'='phone' OR amenity IN ('hospital', 'pharmacy') THEN 0
-                -- Other emergency-related amenities
-                WHEN amenity IN ('bicycle_repair_station', 'compressed_air', 'drinking_water', 'police', 'toilets',
-                  'water_point', 'charging_station') THEN 10
-                WHEN tags->'compressed_air'='yes' THEN 11
-                -- Bike amenities
-                WHEN shop IN ('bicycle', 'sports') THEN 30
-                WHEN amenity IN ('bicycle_rental') Then 31
-                WHEN amenity IN ('bicycle_parking', 'motorcycle_parking') THEN 32
-                -- Supermarkets
-                WHEN shop='supermarket' THEN 40
-                -- Convenience
-                WHEN shop='convenience' OR shop='convenience;gas' THEN 50
-                -- Food
-                WHEN shop IS NOT NULL OR amenity IN ('bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'pub', 'restaurant') THEN 60
-                -- Everything else
-                ELSE NULL
-            END ASC NULLS LAST,
-            feature,
-            score DESC NULLS LAST
-      ) AS data
-  geometry: polygon
-  properties:
-    minzoom: 10
-- id: amenities-points
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    # Update the layer with the text below as well when editing this query.
-    table: |-
-      (
-        SELECT
-          access,
-          bicycle,
-          tags->'mtb' AS mtb,
-          covered,
-          tags->'shelter' AS shelter,
-          way,
-          name,
-          COALESCE( -- order is important here
-            'aeroway_' || CASE WHEN aeroway IN ('helipad', 'aerodrome') THEN aeroway ELSE NULL END,
-            'tourism_' || CASE WHEN tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel', 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery') THEN tourism ELSE NULL END,
-            'amenity_' || CASE WHEN amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station', 'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food', 'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe', 'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath', 'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre', 'bureau_de_change', 'casino', 'library', 'motorcycle_parking', 'charging_station', 'vending_machine') THEN amenity ELSE NULL END,
-            'shop_' || CASE WHEN tags->'service:bicycle:retail'='yes' OR tags->'service:bicycle:repair'='yes' OR tags->'service:bicycle:rental'='yes' OR tags->'service:bicycle:pump'='yes' OR tags->'service:bicycle:diy'='yes' THEN 'bicycle' ELSE CASE WHEN shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports') THEN bicycle ELSE NULL END END,
-            'emergency_' || CASE WHEN tags->'emergency' IS NOT NULL then tags->'emergency' ELSE NULL END,
-            'healthcare_' || CASE WHEN tags->'healthcare' IN ('clinic', 'hospital') THEN tags->'healthcare' ELSE NULL END,
-            'leisure_' || CASE WHEN leisure='picnic_table' THEN leisure ELSE NULL END,
-            'man_made_' || CASE WHEN man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo', 'water_tap', 'monitoring_station') THEN man_made ELSE NULL END,
-            'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance') THEN "natural" ELSE NULL END,
-            'waterway_' || CASE WHEN waterway IN ('waterfall') THEN waterway ELSE NULL END,
-            'historic_' || CASE WHEN historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate') THEN historic ELSE NULL END,
-            'military_'|| CASE WHEN military IN ('bunker') THEN military ELSE NULL END,
-            'highway_'|| CASE WHEN highway IN ('bus_stop', 'elevator', 'traffic_signals') THEN highway ELSE NULL END,
-            'power_' || power
-          ) AS feature,
-          CASE
-            WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
-            ELSE NULL
-          END AS capacity,
-          religion,
-          tags->'denomination' AS denomination,
-          tags->'compressed_air' AS compressed_air,
-          tags->'car_wash' as car_wash,
-          tags->'drinking_water' AS drinking_water,
-          tags->'location' AS location,
-          tags->'memorial' AS memorial,
-          tags->'castle_type' AS castle_type,
-          tags->'information' AS information,
-          tags->'artwork_type' as artwork_type,
-          tags->'icao' as icao,
-          tags->'iata' as iata,
-          "generator:source",
-          tags->'supervised' as supervised,
-          tags->'bicycle_parking' as bicycle_parking,
-          tags->'vending' as vending,
-          tags->'automated' as automated,
-          CASE
-            WHEN "natural" IN ('peak', 'volcano', 'saddle') THEN
-              CASE
-                WHEN ele ~ '^-?\d{1,4}(\.\d+)?$' THEN ele::NUMERIC
-                ELSE NULL
-              END
-            WHEN "waterway" IN ('waterfall') THEN
-              CASE
-                WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
-              ELSE NULL
-              END
-            WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
-            ELSE NULL
-          END AS score,
-          CASE
-            WHEN "natural" IN ('peak', 'volcano', 'saddle')
-              OR tourism = 'alpine_hut' OR (tourism = 'information' AND tags->'information' = 'guidepost')
-              OR amenity = 'shelter'
-              THEN
-              CASE
-                WHEN ele ~ '^-?\d{1,4}(\.\d+)?$' THEN ele::NUMERIC
-                ELSE NULL
-              END
-            ELSE NULL
-          END AS elevation,
-          CASE
-            WHEN (man_made IN ('mast', 'tower', 'chimney', 'crane') AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)) OR waterway IN ('waterfall') THEN
-              CASE
-                WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
-              ELSE NULL
-            END
-            ELSE NULL
-          END AS height,
-          NULL AS way_pixels
-        FROM planet_osm_point
-        WHERE aeroway IN ('helipad', 'aerodrome')
-          OR tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel',
-              'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery')
-          OR amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station',
-                         'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food',
-                         'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe',
-                         'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath',
-                         'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre',
-                         'bureau_de_change', 'casino', 'library')
-          OR tags->'compressed_air'='yes'
-          OR tags->'car_wash'='yes'
-          OR (amenity='motorcycle_parking' AND (bicycle='yes' OR bicycle='designated'))
-          OR (amenity='charging_station' AND (bicycle='yes' OR bicycle='designated'))
-          OR (amenity='vending_machine' AND tags->'vending'='bicycle_tube')
-          OR tags->'healthcare' IN ('clinic', 'hospital')
-          OR shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports')
-          OR leisure='picnic_table'
-          OR (
-            man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo')
-            AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)
-          )
-          OR man_made IN ('water_tap')
-          OR man_made IN ('monitoring_station') AND tags->'monitoring:bicycle'='yes'
-          OR "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance')
-          OR waterway IN ('waterfall')
-          OR historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate')
-          OR military IN ('bunker')
-          OR tags->'emergency'='phone'
-          OR highway IN ('elevator', 'traffic_signals')
-          OR (highway='bus_stop' AND (tags->'shelter'='yes' OR covered='yes'))
-          OR (power = 'generator' AND "generator:source"='wind')
-          OR tags->'ford' IS NOT NULL
-        ORDER BY
-            CASE
-                -- Emergency first
-                WHEN tags->'healthcare' IS NOT NULL OR tags->'emergency'='phone' OR amenity IN ('hospital', 'pharmacy') THEN 0
-                -- Other emergency-related amenities
-                WHEN amenity IN ('bicycle_repair_station', 'compressed_air', 'drinking_water', 'police', 'toilets',
-                  'water_point', 'charging_station') THEN 10
-                WHEN tags->'compressed_air'='yes' THEN 11
-                -- Bike amenities
-                WHEN shop IN ('bicycle', 'sports') THEN 30
-                WHEN amenity IN ('bicycle_rental') Then 31
-                WHEN amenity IN ('bicycle_parking', 'motorcycle_parking') THEN 32
-                -- Supermarkets
-                WHEN shop='supermarket' THEN 40
-                -- Convenience
-                WHEN shop='convenience' OR shop='convenience;gas' THEN 50
-                -- Food
-                WHEN shop IS NOT NULL OR amenity IN ('bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'pub', 'restaurant') THEN 60
-                -- Everything else
-                ELSE NULL
-            END ASC NULLS LAST,
-            feature,
-            score DESC NULLS LAST
-      ) AS data
-  geometry: point
-  properties:
-    cache-features: true
-    minzoom: 10
+# - id: train_stations
+#   <<: *extents
+#   Datasource:
+#     <<: *osm2pgsql
+#     table: |-
+#       (
+#         SELECT way, railway AS type, name, tags->'station' AS station, z_order
+#         FROM planet_osm_point
+#         WHERE railway = 'station' OR railway = 'halt'
+#         ORDER BY z_order NULLS LAST
+#       ) AS data
+#   geometry: point
+#   properties:
+#     minzoom: 12
+# - id: oriented-highway-amenities
+#   <<: *extents
+#   Datasource:
+#     <<: *osm2pgsql
+#     table: |-
+#       (
+#         SELECT
+#           osm_id,
+#           feature,
+#           ST_GeometryN(st_union(way),1) as way, max(angle)-min(angle) as angle_diff,
+#           avg(angle) as angle
+#         FROM (
+#           SELECT
+#             p.osm_id,
+#             p.way AS way,
+#             p.feature AS feature,
+#             CASE
+#               WHEN p.feature = 'crossing' THEN cast(90+degrees(ST_Azimuth(st_lineinterpolatepoint(way1,0),st_lineinterpolatepoint(way1,1))) AS integer) % 180
+#               WHEN p.feature = 'traffic_calming' THEN cast(90+degrees(ST_Azimuth(st_lineinterpolatepoint(way1,0),st_lineinterpolatepoint(way1,1))) AS integer) % 180
+#               WHEN p.feature = 'cycleway_asl' THEN
+#                 CASE
+#                   WHEN p.direction = 'backward' THEN cast(degrees(ST_Azimuth(st_lineinterpolatepoint(way1,0),st_lineinterpolatepoint(way1,1))) AS integer) + 180
+#                   ELSE cast(degrees(ST_Azimuth(st_lineinterpolatepoint(way1,0),st_lineinterpolatepoint(way1,1))) AS integer)
+#                 END
+#             END AS angle
+#           FROM (
+#             SELECT * FROM (
+#               SELECT
+#                 p.osm_id,
+#                 p.way,
+#                 ST_LineMerge(ST_Intersection(st_buffer(p.way,0.1), h.way)) as way1,
+#                 CASE
+#                   WHEN p.tags->'traffic_calming' IN ('yes', 'bump', 'dip', 'choker', 'cushion', 'hump', 'rumble_strip', 'table') THEN 'traffic_calming'
+#                   WHEN p.tags->'cycleway' = 'asl' THEN 'cycleway_asl'
+#                   WHEN p.highway = 'crossing' OR p.tags ? 'crossing' THEN 'crossing'
+#                 END AS feature,
+#                 p.tags->'direction' AS direction
+#               FROM planet_osm_point as p
+#               JOIN planet_osm_line h
+#                 ON (st_intersects(p.way,h.way) and h.highway is not null and h.highway not in ('footway','cycleway','path','pedestrian','steps','service'))
+#               WHERE
+#                 (
+#                   (
+#                     (p.highway='crossing' OR p.tags ? 'crossing')
+#                     AND p.bicycle IN ('yes', 'designated')
+#                   )
+#                   OR p.tags->'traffic_calming' IN ('yes', 'bump', 'dip', 'choker', 'cushion', 'hump', 'rumble_strip', 'table')
+#                   OR p.tags->'cycleway' = 'asl'
+#                 )
+#                 AND p.way && !bbox!
+#                 AND h.way && !bbox!
+#             ) AS p
+#             WHERE ST_GeometryType(way1)='ST_LineString'
+#           ) AS p
+#         ) AS amenity
+#         GROUP BY osm_id, feature
+#       ) AS data
+#   properties:
+#     minzoom: 18
+# - id: amenities-poly
+#   <<: *extents
+#   Datasource:
+#     <<: *osm2pgsql
+#     # Update the layer with the text below as well when editing this query.
+#     table: |-
+#       (
+#         SELECT
+#           access,
+#           bicycle,
+#           tags->'mtb' AS mtb,
+#           covered,
+#           tags->'shelter' AS shelter,
+#           way,
+#           name,
+#           COALESCE( -- order is important here
+#             'aeroway_' || CASE WHEN aeroway IN ('helipad', 'aerodrome') THEN aeroway ELSE NULL END,
+#             'tourism_' || CASE WHEN tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel', 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery') THEN tourism ELSE NULL END,
+#             'amenity_' || CASE WHEN amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station', 'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food', 'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe', 'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath', 'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre', 'bureau_de_change', 'casino', 'library', 'motorcycle_parking', 'charging_station', 'vending_machine') THEN amenity ELSE NULL END,
+#             'shop_' || CASE WHEN tags->'service:bicycle:retail'='yes' OR tags->'service:bicycle:repair'='yes' OR tags->'service:bicycle:rental'='yes' OR tags->'service:bicycle:pump'='yes' OR tags->'service:bicycle:diy'='yes' THEN 'bicycle' ELSE CASE WHEN shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports') THEN bicycle ELSE NULL END END,
+#             'emergency_' || CASE WHEN tags->'emergency' IS NOT NULL then tags->'emergency' ELSE NULL END,
+#             'healthcare_' || CASE WHEN tags->'healthcare' IN ('clinic', 'hospital') THEN tags->'healthcare' ELSE NULL END,
+#             'leisure_' || CASE WHEN leisure='picnic_table' THEN leisure ELSE NULL END,
+#             'man_made_' || CASE WHEN man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo', 'water_tap', 'monitoring_station') THEN man_made ELSE NULL END,
+#             'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance') THEN "natural" ELSE NULL END,
+#             'waterway_' || CASE WHEN waterway IN ('waterfall') THEN waterway ELSE NULL END,
+#             'historic_' || CASE WHEN historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate') THEN historic ELSE NULL END,
+#             'military_'|| CASE WHEN military IN ('bunker') THEN military ELSE NULL END,
+#             'highway_'|| CASE WHEN highway IN ('bus_stop', 'elevator', 'traffic_signals') THEN highway ELSE NULL END,
+#             'power_' || power
+#           ) AS feature,
+#           CASE
+#             WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
+#             ELSE NULL
+#           END AS capacity,
+#           religion,
+#           tags->'denomination' AS denomination,
+#           tags->'compressed_air' AS compressed_air,
+#           tags->'car_wash' as car_wash,
+#           tags->'drinking_water' AS drinking_water,
+#           tags->'location' AS location,
+#           tags->'memorial' AS memorial,
+#           tags->'castle_type' AS castle_type,
+#           tags->'information' AS information,
+#           tags->'artwork_type' as artwork_type,
+#           tags->'icao' as icao,
+#           tags->'iata' as iata,
+#           "generator:source",
+#           tags->'supervised' as supervised,
+#           tags->'bicycle_parking' as bicycle_parking,
+#           tags->'vending' as vending,
+#           tags->'automated' as automated,
+#           CASE
+#             WHEN "natural" IN ('peak', 'volcano', 'saddle') THEN NULL
+#             WHEN "waterway" IN ('waterfall') THEN
+#               CASE
+#                 WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
+#               ELSE NULL
+#               END
+#             WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
+#             ELSE NULL
+#           END AS score,
+#           NULL AS elevation,
+#           CASE
+#             WHEN (man_made IN ('mast', 'tower', 'chimney', 'crane') AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)) OR waterway IN ('waterfall') THEN
+#               CASE
+#                 WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
+#               ELSE NULL
+#             END
+#             ELSE NULL
+#           END AS height,
+#           way_area/NULLIF(!pixel_width!::real*!pixel_height!::real,0) AS way_pixels
+#         FROM planet_osm_polygon
+#         WHERE aeroway IN ('helipad', 'aerodrome')
+#           OR tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel',
+#               'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery')
+#           OR amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station',
+#                          'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food',
+#                          'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe',
+#                          'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath',
+#                          'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre',
+#                          'bureau_de_change', 'casino', 'library')
+#           OR tags->'compressed_air'='yes'
+#           OR tags->'car_wash'='yes'
+#           OR (amenity='motorcycle_parking' AND (bicycle='yes' OR bicycle='designated'))
+#           OR (amenity='charging_station' AND (bicycle='yes' OR bicycle='designated'))
+#           OR (amenity='vending_machine' AND tags->'vending'='bicycle_tube')
+#           OR tags->'healthcare' IN ('clinic', 'hospital')
+#           OR shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports')
+#           OR leisure='picnic_table'
+#           OR (
+#             man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo')
+#             AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)
+#           )
+#           OR man_made IN ('water_tap')
+#           OR man_made IN ('monitoring_station') AND tags->'monitoring:bicycle'='yes'
+#           OR "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance')
+#           OR waterway IN ('waterfall')
+#           OR historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate')
+#           OR military IN ('bunker')
+#           OR tags->'emergency'='phone'
+#           OR highway IN ('elevator', 'traffic_signals')
+#           OR (highway='bus_stop' AND (tags->'shelter'='yes' OR covered='yes'))
+#           OR (power = 'generator' AND "generator:source"='wind')
+#         ORDER BY
+#             CASE
+#                 -- Emergency first
+#                 WHEN tags->'healthcare' IS NOT NULL OR tags->'emergency'='phone' OR amenity IN ('hospital', 'pharmacy') THEN 0
+#                 -- Other emergency-related amenities
+#                 WHEN amenity IN ('bicycle_repair_station', 'compressed_air', 'drinking_water', 'police', 'toilets',
+#                   'water_point', 'charging_station') THEN 10
+#                 WHEN tags->'compressed_air'='yes' THEN 11
+#                 -- Bike amenities
+#                 WHEN shop IN ('bicycle', 'sports') THEN 30
+#                 WHEN amenity IN ('bicycle_rental') Then 31
+#                 WHEN amenity IN ('bicycle_parking', 'motorcycle_parking') THEN 32
+#                 -- Supermarkets
+#                 WHEN shop='supermarket' THEN 40
+#                 -- Convenience
+#                 WHEN shop='convenience' OR shop='convenience;gas' THEN 50
+#                 -- Food
+#                 WHEN shop IS NOT NULL OR amenity IN ('bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'pub', 'restaurant') THEN 60
+#                 -- Everything else
+#                 ELSE NULL
+#             END ASC NULLS LAST,
+#             feature,
+#             score DESC NULLS LAST
+#       ) AS data
+#   geometry: polygon
+#   properties:
+#     minzoom: 10
+# - id: amenities-points
+#   <<: *extents
+#   Datasource:
+#     <<: *osm2pgsql
+#     # Update the layer with the text below as well when editing this query.
+#     table: |-
+#       (
+#         SELECT
+#           access,
+#           bicycle,
+#           tags->'mtb' AS mtb,
+#           covered,
+#           tags->'shelter' AS shelter,
+#           way,
+#           name,
+#           COALESCE( -- order is important here
+#             'aeroway_' || CASE WHEN aeroway IN ('helipad', 'aerodrome') THEN aeroway ELSE NULL END,
+#             'tourism_' || CASE WHEN tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel', 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery') THEN tourism ELSE NULL END,
+#             'amenity_' || CASE WHEN amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station', 'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food', 'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe', 'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath', 'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre', 'bureau_de_change', 'casino', 'library', 'motorcycle_parking', 'charging_station', 'vending_machine') THEN amenity ELSE NULL END,
+#             'shop_' || CASE WHEN tags->'service:bicycle:retail'='yes' OR tags->'service:bicycle:repair'='yes' OR tags->'service:bicycle:rental'='yes' OR tags->'service:bicycle:pump'='yes' OR tags->'service:bicycle:diy'='yes' THEN 'bicycle' ELSE CASE WHEN shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports') THEN bicycle ELSE NULL END END,
+#             'emergency_' || CASE WHEN tags->'emergency' IS NOT NULL then tags->'emergency' ELSE NULL END,
+#             'healthcare_' || CASE WHEN tags->'healthcare' IN ('clinic', 'hospital') THEN tags->'healthcare' ELSE NULL END,
+#             'leisure_' || CASE WHEN leisure='picnic_table' THEN leisure ELSE NULL END,
+#             'man_made_' || CASE WHEN man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo', 'water_tap', 'monitoring_station') THEN man_made ELSE NULL END,
+#             'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance') THEN "natural" ELSE NULL END,
+#             'waterway_' || CASE WHEN waterway IN ('waterfall') THEN waterway ELSE NULL END,
+#             'historic_' || CASE WHEN historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate') THEN historic ELSE NULL END,
+#             'military_'|| CASE WHEN military IN ('bunker') THEN military ELSE NULL END,
+#             'highway_'|| CASE WHEN highway IN ('bus_stop', 'elevator', 'traffic_signals') THEN highway ELSE NULL END,
+#             'power_' || power
+#           ) AS feature,
+#           CASE
+#             WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
+#             ELSE NULL
+#           END AS capacity,
+#           religion,
+#           tags->'denomination' AS denomination,
+#           tags->'compressed_air' AS compressed_air,
+#           tags->'car_wash' as car_wash,
+#           tags->'drinking_water' AS drinking_water,
+#           tags->'location' AS location,
+#           tags->'memorial' AS memorial,
+#           tags->'castle_type' AS castle_type,
+#           tags->'information' AS information,
+#           tags->'artwork_type' as artwork_type,
+#           tags->'icao' as icao,
+#           tags->'iata' as iata,
+#           "generator:source",
+#           tags->'supervised' as supervised,
+#           tags->'bicycle_parking' as bicycle_parking,
+#           tags->'vending' as vending,
+#           tags->'automated' as automated,
+#           CASE
+#             WHEN "natural" IN ('peak', 'volcano', 'saddle') THEN
+#               CASE
+#                 WHEN ele ~ '^-?\d{1,4}(\.\d+)?$' THEN ele::NUMERIC
+#                 ELSE NULL
+#               END
+#             WHEN "waterway" IN ('waterfall') THEN
+#               CASE
+#                 WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
+#               ELSE NULL
+#               END
+#             WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
+#             ELSE NULL
+#           END AS score,
+#           CASE
+#             WHEN "natural" IN ('peak', 'volcano', 'saddle')
+#               OR tourism = 'alpine_hut' OR (tourism = 'information' AND tags->'information' = 'guidepost')
+#               OR amenity = 'shelter'
+#               THEN
+#               CASE
+#                 WHEN ele ~ '^-?\d{1,4}(\.\d+)?$' THEN ele::NUMERIC
+#                 ELSE NULL
+#               END
+#             ELSE NULL
+#           END AS elevation,
+#           CASE
+#             WHEN (man_made IN ('mast', 'tower', 'chimney', 'crane') AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)) OR waterway IN ('waterfall') THEN
+#               CASE
+#                 WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
+#               ELSE NULL
+#             END
+#             ELSE NULL
+#           END AS height,
+#           NULL AS way_pixels
+#         FROM planet_osm_point
+#         WHERE aeroway IN ('helipad', 'aerodrome')
+#           OR tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel',
+#               'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery')
+#           OR amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station',
+#                          'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food',
+#                          'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe',
+#                          'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath',
+#                          'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre',
+#                          'bureau_de_change', 'casino', 'library')
+#           OR tags->'compressed_air'='yes'
+#           OR tags->'car_wash'='yes'
+#           OR (amenity='motorcycle_parking' AND (bicycle='yes' OR bicycle='designated'))
+#           OR (amenity='charging_station' AND (bicycle='yes' OR bicycle='designated'))
+#           OR (amenity='vending_machine' AND tags->'vending'='bicycle_tube')
+#           OR tags->'healthcare' IN ('clinic', 'hospital')
+#           OR shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports')
+#           OR leisure='picnic_table'
+#           OR (
+#             man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo')
+#             AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)
+#           )
+#           OR man_made IN ('water_tap')
+#           OR man_made IN ('monitoring_station') AND tags->'monitoring:bicycle'='yes'
+#           --OR "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance')
+#           OR waterway IN ('waterfall')
+#           OR historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate')
+#           OR military IN ('bunker')
+#           OR tags->'emergency'='phone'
+#           OR highway IN ('elevator', 'traffic_signals')
+#           OR (highway='bus_stop' AND (tags->'shelter'='yes' OR covered='yes'))
+#           OR (power = 'generator' AND "generator:source"='wind')
+#           OR tags->'ford' IS NOT NULL
+#         ORDER BY
+#             CASE
+#                 -- Emergency first
+#                 WHEN tags->'healthcare' IS NOT NULL OR tags->'emergency'='phone' OR amenity IN ('hospital', 'pharmacy') THEN 0
+#                 -- Other emergency-related amenities
+#                 WHEN amenity IN ('bicycle_repair_station', 'compressed_air', 'drinking_water', 'police', 'toilets',
+#                   'water_point', 'charging_station') THEN 10
+#                 WHEN tags->'compressed_air'='yes' THEN 11
+#                 -- Bike amenities
+#                 WHEN shop IN ('bicycle', 'sports') THEN 30
+#                 WHEN amenity IN ('bicycle_rental') Then 31
+#                 WHEN amenity IN ('bicycle_parking', 'motorcycle_parking') THEN 32
+#                 -- Supermarkets
+#                 WHEN shop='supermarket' THEN 40
+#                 -- Convenience
+#                 WHEN shop='convenience' OR shop='convenience;gas' THEN 50
+#                 -- Food
+#                 WHEN shop IS NOT NULL OR amenity IN ('bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'pub', 'restaurant') THEN 60
+#                 -- Everything else
+#                 ELSE NULL
+#             END ASC NULLS LAST,
+#             feature,
+#             score DESC NULLS LAST
+#       ) AS data
+#   geometry: point
+#   properties:
+#     cache-features: true
+#     minzoom: 10
 - id: barriers
   <<: *extents
   Datasource:
@@ -1022,355 +819,308 @@ Layer:
   geometry: point
   properties:
     minzoom: 17
-- id: amenities-poly-text
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT
-          way,
-          feature,
-          access,
-          capacity,
-          name,
-          score,
-          height,
-          information,
-          way_pixels
-        FROM
-        (
-          SELECT
-            access,
-            bicycle,
-            tags->'mtb' AS mtb,
-            covered,
-            tags->'shelter' AS shelter,
-            way,
-            name,
-            COALESCE( -- order is important here
-              'aeroway_' || CASE WHEN aeroway IN ('helipad', 'aerodrome') THEN aeroway ELSE NULL END,
-              'tourism_' || CASE WHEN tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel', 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery') THEN tourism ELSE NULL END,
-              'amenity_' || CASE WHEN amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station', 'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food', 'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe', 'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath', 'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre', 'bureau_de_change', 'casino', 'library', 'motorcycle_parking', 'charging_station', 'vending_machine') THEN amenity ELSE NULL END,
-              'shop_' || CASE WHEN tags->'service:bicycle:retail'='yes' OR tags->'service:bicycle:repair'='yes' OR tags->'service:bicycle:rental'='yes' OR tags->'service:bicycle:pump'='yes' OR tags->'service:bicycle:diy'='yes' THEN 'bicycle' ELSE CASE WHEN shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports') THEN bicycle ELSE NULL END END,
-              'emergency_' || CASE WHEN tags->'emergency' IS NOT NULL then tags->'emergency' ELSE NULL END,
-              'healthcare_' || CASE WHEN tags->'healthcare' IN ('clinic', 'hospital') THEN tags->'healthcare' ELSE NULL END,
-              'leisure_' || CASE WHEN leisure='picnic_table' THEN leisure ELSE NULL END,
-              'man_made_' || CASE WHEN man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo', 'water_tap', 'monitoring_station') THEN man_made ELSE NULL END,
-              'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance') THEN "natural" ELSE NULL END,
-              'waterway_' || CASE WHEN waterway IN ('waterfall') THEN waterway ELSE NULL END,
-              'historic_' || CASE WHEN historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate') THEN historic ELSE NULL END,
-              'military_'|| CASE WHEN military IN ('bunker') THEN military ELSE NULL END,
-              'highway_'|| CASE WHEN highway IN ('bus_stop', 'elevator', 'traffic_signals') THEN highway ELSE NULL END,
-              'power_' || power
-            ) AS feature,
-            CASE
-              WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
-              ELSE NULL
-            END AS capacity,
-            religion,
-            tags->'denomination' AS denomination,
-            tags->'compressed_air' AS compressed_air,
-            tags->'car_wash' as car_wash,
-            tags->'drinking_water' AS drinking_water,
-            tags->'location' AS location,
-            tags->'memorial' AS memorial,
-            tags->'castle_type' AS castle_type,
-            tags->'information' AS information,
-            tags->'artwork_type' as artwork_type,
-            tags->'icao' as icao,
-            tags->'iata' as iata,
-            "generator:source",
-            tags->'supervised' as supervised,
-            tags->'bicycle_parking' as bicycle_parking,
-            tags->'vending' as vending,
-            tags->'automated' as automated,
-            CASE
-              WHEN "natural" IN ('peak', 'volcano', 'saddle') THEN NULL
-              WHEN "waterway" IN ('waterfall') THEN
-                CASE
-                  WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
-                ELSE NULL
-                END
-              WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
-              ELSE NULL
-            END AS score,
-            NULL AS elevation,
-            CASE
-              WHEN (man_made IN ('mast', 'tower', 'chimney', 'crane') AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)) OR waterway IN ('waterfall') THEN
-                CASE
-                  WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
-                ELSE NULL
-              END
-              ELSE NULL
-            END AS height,
-            way_area/NULLIF(!pixel_width!::real*!pixel_height!::real,0) AS way_pixels
-          FROM planet_osm_polygon
-          WHERE aeroway IN ('helipad', 'aerodrome')
-            OR tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel',
-                'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery')
-            OR amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station',
-                           'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food',
-                           'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe',
-                           'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath',
-                           'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre',
-                           'bureau_de_change', 'casino', 'library')
-            OR tags->'compressed_air'='yes'
-            OR tags->'car_wash'='yes'
-            OR (amenity='motorcycle_parking' AND (bicycle='yes' OR bicycle='designated'))
-            OR (amenity='charging_station' AND (bicycle='yes' OR bicycle='designated'))
-            OR (amenity='vending_machine' AND tags->'vending'='bicycle_tube')
-            OR shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports')
-            OR tags->'healthcare' IN ('clinic', 'hospital')
-            OR leisure='picnic_table'
-            OR (
-              man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo')
-              AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)
-            )
-            OR man_made IN ('water_tap')
-            OR man_made IN ('monitoring_station') AND tags->'monitoring:bicycle'='yes'
-            OR "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance')
-            OR waterway IN ('waterfall')
-            OR historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate')
-            OR military IN ('bunker')
-            OR tags->'emergency'='phone'
-            OR highway IN ('elevator', 'traffic_signals')
-            OR (highway='bus_stop' AND (tags->'shelter'='yes' OR covered='yes'))
-            OR (power = 'generator' AND "generator:source"='wind')
-          ORDER BY
-            CASE
-                -- Emergency first
-                WHEN tags->'healthcare' IS NOT NULL OR tags->'emergency'='phone' OR amenity IN ('hospital', 'pharmacy') THEN 0
-                -- Other emergency-related amenities
-                WHEN amenity IN ('bicycle_repair_station', 'compressed_air', 'drinking_water', 'police', 'toilets',
-                  'water_point', 'charging_station') THEN 10
-                WHEN tags->'compressed_air'='yes' THEN 11
-                -- Bike amenities
-                WHEN shop IN ('bicycle', 'sports') THEN 30
-                WHEN amenity IN ('bicycle_rental') Then 31
-                WHEN amenity IN ('bicycle_parking', 'motorcycle_parking') THEN 32
-                -- Supermarkets
-                WHEN shop='supermarket' THEN 40
-                -- Convenience
-                WHEN shop='convenience' OR shop='convenience;gas' THEN 50
-                -- Food
-                WHEN shop IS NOT NULL OR amenity IN ('bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'pub', 'restaurant') THEN 60
-                -- Everything else
-                ELSE NULL
-            END ASC NULLS LAST,
-            feature,
-            score DESC NULLS LAST
-        ) AS p
-      ) AS data
-  geometry: polygon
-  properties:
-    minzoom: 14
-- id: amenities-points-text
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT
-          way,
-          feature,
-          access,
-          capacity,
-          CONCAT(
-              name,
-              CASE WHEN name IS NOT NULL AND elevation IS NOT NULL THEN E'\n' ELSE NULL END,
-              CASE WHEN elevation IS NOT NULL THEN CONCAT(REPLACE(ROUND(elevation)::TEXT, '-', U&'\2212'), U&'\00A0', 'm') ELSE NULL END
-          ) AS name,
-          score,
-          height,
-          information,
-          way_pixels
-        FROM
-        (
-          SELECT
-            access,
-            bicycle,
-            tags->'mtb' AS mtb,
-            covered,
-            tags->'shelter' AS shelter,
-            way,
-            name,
-            COALESCE( -- order is important here
-              'aeroway_' || CASE WHEN aeroway IN ('helipad', 'aerodrome') THEN aeroway ELSE NULL END,
-              'tourism_' || CASE WHEN tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel', 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery') THEN tourism ELSE NULL END,
-              'amenity_' || CASE WHEN amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station', 'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food', 'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe', 'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath', 'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre', 'bureau_de_change', 'casino', 'library', 'motorcycle_parking', 'charging_station', 'vending_machine') THEN amenity ELSE NULL END,
-              'shop_' || CASE WHEN tags->'service:bicycle:retail'='yes' OR tags->'service:bicycle:repair'='yes' OR tags->'service:bicycle:rental'='yes' OR tags->'service:bicycle:pump'='yes' OR tags->'service:bicycle:diy'='yes' THEN 'bicycle' ELSE CASE WHEN shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports') THEN bicycle ELSE NULL END END,
-              'emergency_' || CASE WHEN tags->'emergency' IS NOT NULL then tags->'emergency' ELSE NULL END,
-              'healthcare_' || CASE WHEN tags->'healthcare' IN ('clinic', 'hospital') THEN tags->'healthcare' ELSE NULL END,
-              'leisure_' || CASE WHEN leisure='picnic_table' THEN leisure ELSE NULL END,
-              'man_made_' || CASE WHEN man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo', 'water_tap', 'monitoring_station') THEN man_made ELSE NULL END,
-              'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance') THEN "natural" ELSE NULL END,
-              'waterway_' || CASE WHEN waterway IN ('waterfall') THEN waterway ELSE NULL END,
-              'historic_' || CASE WHEN historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate') THEN historic ELSE NULL END,
-              'military_'|| CASE WHEN military IN ('bunker') THEN military ELSE NULL END,
-              'highway_'|| CASE WHEN highway IN ('bus_stop', 'elevator', 'traffic_signals') THEN highway ELSE NULL END,
-              'power_' || power
-            ) AS feature,
-            CASE
-              WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
-              ELSE NULL
-            END AS capacity,
-            religion,
-            tags->'denomination' AS denomination,
-            tags->'compressed_air' AS compressed_air,
-            tags->'car_wash' as car_wash,
-            tags->'drinking_water' AS drinking_water,
-            tags->'location' AS location,
-            tags->'memorial' AS memorial,
-            tags->'castle_type' AS castle_type,
-            tags->'information' AS information,
-            tags->'artwork_type' as artwork_type,
-            tags->'icao' as icao,
-            tags->'iata' as iata,
-            "generator:source",
-            tags->'supervised' as supervised,
-            tags->'bicycle_parking' as bicycle_parking,
-            tags->'vending' as vending,
-            tags->'automated' as automated,
-            CASE
-              WHEN "natural" IN ('peak', 'volcano', 'saddle') THEN
-                CASE
-                  WHEN ele ~ '^-?\d{1,4}(\.\d+)?$' THEN ele::NUMERIC
-                  ELSE NULL
-                END
-              WHEN "waterway" IN ('waterfall') THEN
-                CASE
-                  WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
-                ELSE NULL
-                END
-              WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
-              ELSE NULL
-            END AS score,
-            CASE
-              WHEN "natural" IN ('peak', 'volcano', 'saddle')
-                OR tourism = 'alpine_hut' OR (tourism = 'information' AND tags->'information' = 'guidepost')
-                OR amenity = 'shelter'
-                THEN
-                CASE
-                  WHEN ele ~ '^-?\d{1,4}(\.\d+)?$' THEN ele::NUMERIC
-                  ELSE NULL
-                END
-              ELSE NULL
-            END AS elevation,
-            CASE
-              WHEN (man_made IN ('mast', 'tower', 'chimney', 'crane') AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)) OR waterway IN ('waterfall') THEN
-                CASE
-                  WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
-                ELSE NULL
-              END
-              ELSE NULL
-            END AS height,
-            NULL AS way_pixels
-          FROM planet_osm_point
-          WHERE aeroway IN ('helipad', 'aerodrome')
-            OR tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel',
-                'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery')
-            OR amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station',
-                           'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food',
-                           'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe',
-                           'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath',
-                           'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre',
-                           'bureau_de_change', 'casino', 'library')
-            OR tags->'compressed_air'='yes'
-            OR tags->'car_wash'='yes'
-            OR (amenity='motorcycle_parking' AND (bicycle='yes' OR bicycle='designated'))
-            OR (amenity='charging_station' AND (bicycle='yes' OR bicycle='designated'))
-            OR (amenity='vending_machine' AND tags->'vending'='bicycle_tube')
-            OR shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports')
-            OR tags->'healthcare' IN ('clinic', 'hospital')
-            OR leisure='picnic_table'
-            OR (
-              man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo')
-              AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)
-            )
-            OR man_made IN ('water_tap')
-            OR man_made IN ('monitoring_station') AND tags->'monitoring:bicycle'='yes'
-            OR "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance')
-            OR waterway IN ('waterfall')
-            OR historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate')
-            OR military IN ('bunker')
-            OR tags->'emergency'='phone'
-            OR highway IN ('elevator', 'traffic_signals')
-            OR (highway='bus_stop' AND (tags->'shelter'='yes' OR covered='yes'))
-            OR (power = 'generator' AND "generator:source"='wind')
-            OR tags->'ford' IS NOT NULL
-          ORDER BY
-            CASE
-                -- Emergency first
-                WHEN tags->'healthcare' IS NOT NULL OR tags->'emergency'='phone' OR amenity IN ('hospital', 'pharmacy') THEN 0
-                -- Other emergency-related amenities
-                WHEN amenity IN ('bicycle_repair_station', 'compressed_air', 'drinking_water', 'police', 'toilets',
-                  'water_point', 'charging_station') THEN 10
-                WHEN tags->'compressed_air'='yes' THEN 11
-                -- Bike amenities
-                WHEN shop IN ('bicycle', 'sports') THEN 30
-                WHEN amenity IN ('bicycle_rental') Then 31
-                WHEN amenity IN ('bicycle_parking', 'motorcycle_parking') THEN 32
-                -- Supermarkets
-                WHEN shop='supermarket' THEN 40
-                -- Convenience
-                WHEN shop='convenience' OR shop='convenience;gas' THEN 50
-                -- Food
-                WHEN shop IS NOT NULL OR amenity IN ('bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'pub', 'restaurant') THEN 60
-                -- Everything else
-                ELSE NULL
-            END ASC NULLS LAST,
-            feature,
-            score DESC NULLS LAST
-        ) AS p
-      ) AS data
-  geometry: point
-  properties:
-    minzoom: 14
-- id: highway_area_label
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT highway AS type, name, way_area AS area, ST_PointOnSurface(way) AS way
-        FROM planet_osm_polygon
-        WHERE name IS NOT NULL AND highway IS NOT NULL
-          AND way && !bbox!
-      ) AS data
-  geometry: point
-  properties:
-    minzoom: 10
-- id: legend-icons
-  class: legend
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT
-          way,
-          tags->'icon' AS icon,
-          tags->'label' AS label
-        FROM planet_osm_point
-        WHERE tags->'icon' IS NOT NULL
-      ) AS data
-  geometry: point
-  properties:
-    status: off
-- id: legend-labels
-  class: legend
-  <<: *extents
-  Datasource:
-    <<: *osm2pgsql
-    table: |-
-      (
-        SELECT
-          way,
-          tags->'label' AS label
-        FROM planet_osm_point
-        WHERE tags->'label' IS NOT NULL AND tags->'icon' IS NULL
-      ) AS data
-  geometry: point
-  properties:
-    status: off
+# - id: amenities-poly-text
+#   <<: *extents
+#   Datasource:
+#     <<: *osm2pgsql
+#     table: |-
+#       (
+#         SELECT
+#           way,
+#           feature,
+#           access,
+#           capacity,
+#           name,
+#           score,
+#           height,
+#           information,
+#           way_pixels
+#         FROM
+#         (
+#           SELECT
+#             access,
+#             bicycle,
+#             tags->'mtb' AS mtb,
+#             covered,
+#             tags->'shelter' AS shelter,
+#             way,
+#             name,
+#             COALESCE( -- order is important here
+#               'aeroway_' || CASE WHEN aeroway IN ('helipad', 'aerodrome') THEN aeroway ELSE NULL END,
+#               'tourism_' || CASE WHEN tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel', 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery') THEN tourism ELSE NULL END,
+#               'amenity_' || CASE WHEN amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station', 'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food', 'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe', 'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath', 'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre', 'bureau_de_change', 'casino', 'library', 'motorcycle_parking', 'charging_station', 'vending_machine') THEN amenity ELSE NULL END,
+#               'shop_' || CASE WHEN tags->'service:bicycle:retail'='yes' OR tags->'service:bicycle:repair'='yes' OR tags->'service:bicycle:rental'='yes' OR tags->'service:bicycle:pump'='yes' OR tags->'service:bicycle:diy'='yes' THEN 'bicycle' ELSE CASE WHEN shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports') THEN bicycle ELSE NULL END END,
+#               'emergency_' || CASE WHEN tags->'emergency' IS NOT NULL then tags->'emergency' ELSE NULL END,
+#               'healthcare_' || CASE WHEN tags->'healthcare' IN ('clinic', 'hospital') THEN tags->'healthcare' ELSE NULL END,
+#               'leisure_' || CASE WHEN leisure='picnic_table' THEN leisure ELSE NULL END,
+#               'man_made_' || CASE WHEN man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo', 'water_tap', 'monitoring_station') THEN man_made ELSE NULL END,
+#               'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance') THEN "natural" ELSE NULL END,
+#               'waterway_' || CASE WHEN waterway IN ('waterfall') THEN waterway ELSE NULL END,
+#               'historic_' || CASE WHEN historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate') THEN historic ELSE NULL END,
+#               'military_'|| CASE WHEN military IN ('bunker') THEN military ELSE NULL END,
+#               'highway_'|| CASE WHEN highway IN ('bus_stop', 'elevator', 'traffic_signals') THEN highway ELSE NULL END,
+#               'power_' || power
+#             ) AS feature,
+#             CASE
+#               WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
+#               ELSE NULL
+#             END AS capacity,
+#             religion,
+#             tags->'denomination' AS denomination,
+#             tags->'compressed_air' AS compressed_air,
+#             tags->'car_wash' as car_wash,
+#             tags->'drinking_water' AS drinking_water,
+#             tags->'location' AS location,
+#             tags->'memorial' AS memorial,
+#             tags->'castle_type' AS castle_type,
+#             tags->'information' AS information,
+#             tags->'artwork_type' as artwork_type,
+#             tags->'icao' as icao,
+#             tags->'iata' as iata,
+#             "generator:source",
+#             tags->'supervised' as supervised,
+#             tags->'bicycle_parking' as bicycle_parking,
+#             tags->'vending' as vending,
+#             tags->'automated' as automated,
+#             CASE
+#               WHEN "natural" IN ('peak', 'volcano', 'saddle') THEN NULL
+#               WHEN "waterway" IN ('waterfall') THEN
+#                 CASE
+#                   WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
+#                 ELSE NULL
+#                 END
+#               WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
+#               ELSE NULL
+#             END AS score,
+#             NULL AS elevation,
+#             CASE
+#               WHEN (man_made IN ('mast', 'tower', 'chimney', 'crane') AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)) OR waterway IN ('waterfall') THEN
+#                 CASE
+#                   WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
+#                 ELSE NULL
+#               END
+#               ELSE NULL
+#             END AS height,
+#             way_area/NULLIF(!pixel_width!::real*!pixel_height!::real,0) AS way_pixels
+#           FROM planet_osm_polygon
+#           WHERE aeroway IN ('helipad', 'aerodrome')
+#             OR tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel',
+#                 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery')
+#             OR amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station',
+#                            'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food',
+#                            'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe',
+#                            'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath',
+#                            'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre',
+#                            'bureau_de_change', 'casino', 'library')
+#             OR tags->'compressed_air'='yes'
+#             OR tags->'car_wash'='yes'
+#             OR (amenity='motorcycle_parking' AND (bicycle='yes' OR bicycle='designated'))
+#             OR (amenity='charging_station' AND (bicycle='yes' OR bicycle='designated'))
+#             OR (amenity='vending_machine' AND tags->'vending'='bicycle_tube')
+#             OR shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports')
+#             OR tags->'healthcare' IN ('clinic', 'hospital')
+#             OR leisure='picnic_table'
+#             OR (
+#               man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo')
+#               AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)
+#             )
+#             OR man_made IN ('water_tap')
+#             OR man_made IN ('monitoring_station') AND tags->'monitoring:bicycle'='yes'
+#             --OR "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance')
+#             OR waterway IN ('waterfall')
+#             OR historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate')
+#             OR military IN ('bunker')
+#             OR tags->'emergency'='phone'
+#             OR highway IN ('elevator', 'traffic_signals')
+#             OR (highway='bus_stop' AND (tags->'shelter'='yes' OR covered='yes'))
+#             OR (power = 'generator' AND "generator:source"='wind')
+#           ORDER BY
+#             CASE
+#                 -- Emergency first
+#                 WHEN tags->'healthcare' IS NOT NULL OR tags->'emergency'='phone' OR amenity IN ('hospital', 'pharmacy') THEN 0
+#                 -- Other emergency-related amenities
+#                 WHEN amenity IN ('bicycle_repair_station', 'compressed_air', 'drinking_water', 'police', 'toilets',
+#                   'water_point', 'charging_station') THEN 10
+#                 WHEN tags->'compressed_air'='yes' THEN 11
+#                 -- Bike amenities
+#                 WHEN shop IN ('bicycle', 'sports') THEN 30
+#                 WHEN amenity IN ('bicycle_rental') Then 31
+#                 WHEN amenity IN ('bicycle_parking', 'motorcycle_parking') THEN 32
+#                 -- Supermarkets
+#                 WHEN shop='supermarket' THEN 40
+#                 -- Convenience
+#                 WHEN shop='convenience' OR shop='convenience;gas' THEN 50
+#                 -- Food
+#                 WHEN shop IS NOT NULL OR amenity IN ('bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'pub', 'restaurant') THEN 60
+#                 -- Everything else
+#                 ELSE NULL
+#             END ASC NULLS LAST,
+#             feature,
+#             score DESC NULLS LAST
+#         ) AS p
+#       ) AS data
+#   geometry: polygon
+#   properties:
+#     minzoom: 14
+# - id: amenities-points-text
+#   <<: *extents
+#   Datasource:
+#     <<: *osm2pgsql
+#     table: |-
+#       (
+#         SELECT
+#           way,
+#           feature,
+#           access,
+#           capacity,
+#           CONCAT(
+#               name,
+#               CASE WHEN name IS NOT NULL AND elevation IS NOT NULL THEN E'\n' ELSE NULL END,
+#               CASE WHEN elevation IS NOT NULL THEN CONCAT(REPLACE(ROUND(elevation)::TEXT, '-', U&'\2212'), U&'\00A0', 'm') ELSE NULL END
+#           ) AS name,
+#           score,
+#           height,
+#           information,
+#           way_pixels
+#         FROM
+#         (
+#           SELECT
+#             access,
+#             bicycle,
+#             tags->'mtb' AS mtb,
+#             covered,
+#             tags->'shelter' AS shelter,
+#             way,
+#             name,
+#             COALESCE( -- order is important here
+#               'aeroway_' || CASE WHEN aeroway IN ('helipad', 'aerodrome') THEN aeroway ELSE NULL END,
+#               'tourism_' || CASE WHEN tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel', 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery') THEN tourism ELSE NULL END,
+#               'amenity_' || CASE WHEN amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station', 'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food', 'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe', 'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath', 'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre', 'bureau_de_change', 'casino', 'library', 'motorcycle_parking', 'charging_station', 'vending_machine') THEN amenity ELSE NULL END,
+#               'shop_' || CASE WHEN tags->'service:bicycle:retail'='yes' OR tags->'service:bicycle:repair'='yes' OR tags->'service:bicycle:rental'='yes' OR tags->'service:bicycle:pump'='yes' OR tags->'service:bicycle:diy'='yes' THEN 'bicycle' ELSE CASE WHEN shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports') THEN bicycle ELSE NULL END END,
+#               'emergency_' || CASE WHEN tags->'emergency' IS NOT NULL then tags->'emergency' ELSE NULL END,
+#               'healthcare_' || CASE WHEN tags->'healthcare' IN ('clinic', 'hospital') THEN tags->'healthcare' ELSE NULL END,
+#               'leisure_' || CASE WHEN leisure='picnic_table' THEN leisure ELSE NULL END,
+#               'man_made_' || CASE WHEN man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo', 'water_tap', 'monitoring_station') THEN man_made ELSE NULL END,
+#               'natural_' || CASE WHEN "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance') THEN "natural" ELSE NULL END,
+#               'waterway_' || CASE WHEN waterway IN ('waterfall') THEN waterway ELSE NULL END,
+#               'historic_' || CASE WHEN historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate') THEN historic ELSE NULL END,
+#               'military_'|| CASE WHEN military IN ('bunker') THEN military ELSE NULL END,
+#               'highway_'|| CASE WHEN highway IN ('bus_stop', 'elevator', 'traffic_signals') THEN highway ELSE NULL END,
+#               'power_' || power
+#             ) AS feature,
+#             CASE
+#               WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
+#               ELSE NULL
+#             END AS capacity,
+#             religion,
+#             tags->'denomination' AS denomination,
+#             tags->'compressed_air' AS compressed_air,
+#             tags->'car_wash' as car_wash,
+#             tags->'drinking_water' AS drinking_water,
+#             tags->'location' AS location,
+#             tags->'memorial' AS memorial,
+#             tags->'castle_type' AS castle_type,
+#             tags->'information' AS information,
+#             tags->'artwork_type' as artwork_type,
+#             tags->'icao' as icao,
+#             tags->'iata' as iata,
+#             "generator:source",
+#             tags->'supervised' as supervised,
+#             tags->'bicycle_parking' as bicycle_parking,
+#             tags->'vending' as vending,
+#             tags->'automated' as automated,
+#             CASE
+#               WHEN "natural" IN ('peak', 'volcano', 'saddle') THEN
+#                 CASE
+#                   WHEN ele ~ '^-?\d{1,4}(\.\d+)?$' THEN ele::NUMERIC
+#                   ELSE NULL
+#                 END
+#               WHEN "waterway" IN ('waterfall') THEN
+#                 CASE
+#                   WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
+#                 ELSE NULL
+#                 END
+#               WHEN tags->'capacity'~E'^\\d+$' THEN (tags->'capacity')::integer
+#               ELSE NULL
+#             END AS score,
+#             CASE
+#               WHEN "natural" IN ('peak', 'volcano', 'saddle')
+#                 OR tourism = 'alpine_hut' OR (tourism = 'information' AND tags->'information' = 'guidepost')
+#                 OR amenity = 'shelter'
+#                 THEN
+#                 CASE
+#                   WHEN ele ~ '^-?\d{1,4}(\.\d+)?$' THEN ele::NUMERIC
+#                   ELSE NULL
+#                 END
+#               ELSE NULL
+#             END AS elevation,
+#             CASE
+#               WHEN (man_made IN ('mast', 'tower', 'chimney', 'crane') AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)) OR waterway IN ('waterfall') THEN
+#                 CASE
+#                   WHEN tags->'height' ~ '^\d{1,3}(\.\d+)?( m)?$' THEN (SUBSTRING(tags->'height', '^(\d{1,3}(\.\d+)?)( m)?$'))::NUMERIC
+#                 ELSE NULL
+#               END
+#               ELSE NULL
+#             END AS height,
+#             NULL AS way_pixels
+#           FROM planet_osm_point
+#           WHERE aeroway IN ('helipad', 'aerodrome')
+#             OR tourism IN ('artwork', 'alpine_hut', 'camp_site', 'caravan_site', 'chalet', 'wilderness_hut', 'guest_house', 'apartment', 'hostel',
+#                 'hotel', 'motel', 'information', 'museum', 'viewpoint', 'picnic_site', 'gallery')
+#             OR amenity IN ('atm', 'bank', 'bar', 'bicycle_rental', 'bicycle_parking', 'bicycle_repair_station',
+#                            'biergarten', 'cafe', 'car_wash', 'compressed_air', 'drinking_water', 'fast_food',
+#                            'ferry_terminal', 'food_court', 'fountain', 'hospital', 'ice_cream', 'internet_cafe',
+#                            'pharmacy', 'place_of_worship', 'police', 'post_office', 'post_box', 'pub', 'public_bath',
+#                            'restaurant', 'shelter', 'shower', 'toilets', 'water_point', 'cinema', 'theatre',
+#                            'bureau_de_change', 'casino', 'library')
+#             OR tags->'compressed_air'='yes'
+#             OR tags->'car_wash'='yes'
+#             OR (amenity='motorcycle_parking' AND (bicycle='yes' OR bicycle='designated'))
+#             OR (amenity='charging_station' AND (bicycle='yes' OR bicycle='designated'))
+#             OR (amenity='vending_machine' AND tags->'vending'='bicycle_tube')
+#             OR shop IN ('bicycle', 'bakery', 'beverage', 'convenience', 'convenience;gas', 'greengrocer', 'supermarket', 'pastry', 'sports')
+#             OR tags->'healthcare' IN ('clinic', 'hospital')
+#             OR leisure='picnic_table'
+#             OR (
+#               man_made IN ('mast', 'tower', 'water_tower', 'lighthouse', 'windmill', 'cross', 'obelisk', 'communications_tower', 'telescope', 'chimney', 'crane', 'storage_tank', 'silo')
+#               AND (tags->'location' NOT IN ('roof', 'rooftop') OR (tags->'location') IS NULL)
+#             )
+#             OR man_made IN ('water_tap')
+#             OR man_made IN ('monitoring_station') AND tags->'monitoring:bicycle'='yes'
+#             OR "natural" IN ('peak', 'volcano', 'saddle', 'spring', 'cave_entrance')
+#             OR waterway IN ('waterfall')
+#             OR historic IN ('memorial', 'monument', 'archaeological_site', 'wayside_cross', 'fort', 'wayside_shrine', 'castle', 'manor', 'city_gate')
+#             OR military IN ('bunker')
+#             OR tags->'emergency'='phone'
+#             OR highway IN ('elevator', 'traffic_signals')
+#             OR (highway='bus_stop' AND (tags->'shelter'='yes' OR covered='yes'))
+#             OR (power = 'generator' AND "generator:source"='wind')
+#             OR tags->'ford' IS NOT NULL
+#           ORDER BY
+#             CASE
+#                 -- Emergency first
+#                 WHEN tags->'healthcare' IS NOT NULL OR tags->'emergency'='phone' OR amenity IN ('hospital', 'pharmacy') THEN 0
+#                 -- Other emergency-related amenities
+#                 WHEN amenity IN ('bicycle_repair_station', 'compressed_air', 'drinking_water', 'police', 'toilets',
+#                   'water_point', 'charging_station') THEN 10
+#                 WHEN tags->'compressed_air'='yes' THEN 11
+#                 -- Bike amenities
+#                 WHEN shop IN ('bicycle', 'sports') THEN 30
+#                 WHEN amenity IN ('bicycle_rental') Then 31
+#                 WHEN amenity IN ('bicycle_parking', 'motorcycle_parking') THEN 32
+#                 -- Supermarkets
+#                 WHEN shop='supermarket' THEN 40
+#                 -- Convenience
+#                 WHEN shop='convenience' OR shop='convenience;gas' THEN 50
+#                 -- Food
+#                 WHEN shop IS NOT NULL OR amenity IN ('bar', 'biergarten', 'cafe', 'fast_food', 'food_court', 'pub', 'restaurant') THEN 60
+#                 -- Everything else
+#                 ELSE NULL
+#             END ASC NULLS LAST,
+#             feature,
+#             score DESC NULLS LAST
+#         ) AS p
+#       ) AS data
+#   geometry: point
+#   properties:
+#     minzoom: 14
