@@ -12,3 +12,4 @@ scripts/test/*.txt
 tmp/
 .kosmtik-config.yml
 .env
+.osm.pdf
